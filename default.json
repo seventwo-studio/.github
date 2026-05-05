@@ -1,0 +1,211 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":pinAllExceptPeerDependencies"],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "timezone": "Europe/Amsterdam",
+  "schedule": ["before 5am on Monday"],
+  "labels": ["dependencies"],
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rebaseWhen": "conflicted",
+  "separateMajorMinor": true,
+  "semanticCommits": "enabled",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on Monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Patch updates — auto-merge after release age",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Dev-dep minor updates — auto-merge after release age",
+      "matchUpdateTypes": ["minor"],
+      "matchDepTypes": ["devDependencies"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Lockfile maintenance — auto-merge",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Digest pins — auto-merge",
+      "matchUpdateTypes": ["digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Runtime dep minor updates — manual review",
+      "matchUpdateTypes": ["minor"],
+      "matchDepTypes": ["dependencies"],
+      "automerge": false
+    },
+    {
+      "description": "Major updates — manual review, monthly cadence",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "schedule": ["before 5am on the first day of the month"]
+    },
+    {
+      "description": "GitHub Actions — group all, pin digests, manual review",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "pinDigests": true,
+      "automerge": false
+    },
+    {
+      "description": "Build / lint / type tooling — almost always safe to bump together",
+      "groupName": "tooling",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "@biomejs/**",
+        "typescript",
+        "tsx",
+        "turbo",
+        "@types/**"
+      ]
+    },
+    {
+      "description": "Test runners + assertions",
+      "groupName": "testing",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "vitest",
+        "@vitest/**",
+        "playwright",
+        "@playwright/**"
+      ]
+    },
+    {
+      "description": "React + the bits that must move together",
+      "groupName": "react",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "@types/react",
+        "@types/react-dom"
+      ]
+    },
+    {
+      "description": "Vite ecosystem",
+      "groupName": "vite",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "vite",
+        "@vitejs/**",
+        "@tailwindcss/vite"
+      ]
+    },
+    {
+      "description": "TanStack — Router + Query + friends share release cadences",
+      "groupName": "tanstack",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@tanstack/**"]
+    },
+    {
+      "description": "Astro + Starlight",
+      "groupName": "astro",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "astro",
+        "@astrojs/**",
+        "starlight",
+        "starlight-**"
+      ]
+    },
+    {
+      "description": "Cloudflare Workers tooling",
+      "groupName": "cloudflare",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "wrangler",
+        "miniflare",
+        "@cloudflare/**"
+      ]
+    },
+    {
+      "description": "Hono + OpenAPI bits",
+      "groupName": "hono",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "hono",
+        "@hono/**",
+        "@scalar/hono-api-reference"
+      ]
+    },
+    {
+      "description": "Drizzle ORM + kit",
+      "groupName": "drizzle",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "drizzle-**",
+        "@drizzle/**"
+      ]
+    },
+    {
+      "description": "Better Auth — server + plugins",
+      "groupName": "better-auth",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "better-auth",
+        "@better-auth/**"
+      ]
+    },
+    {
+      "description": "Tailwind + Base UI + Radix-style primitives",
+      "groupName": "ui",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "tailwindcss",
+        "@tailwindcss/**",
+        "@base-ui-components/**",
+        "@radix-ui/**",
+        "lucide-react",
+        "class-variance-authority",
+        "clsx",
+        "tailwind-merge"
+      ]
+    },
+    {
+      "description": "Expo / React Native ecosystem",
+      "groupName": "expo",
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "expo",
+        "expo-**",
+        "@expo/**",
+        "react-native",
+        "react-native-**",
+        "@react-native/**",
+        "nativewind"
+      ]
+    },
+    {
+      "description": "Catch-all for everything else — minor + patch only so unrelated majors still land as isolated PRs",
+      "groupName": "minor and patch",
+      "groupSlug": "all-minor-patch",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": ["*"]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "automerge": true,
+    "minimumReleaseAge": null,
+    "schedule": ["at any time"]
+  }
+}
