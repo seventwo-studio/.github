@@ -1,6 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", ":pinAllExceptPeerDependencies"],
+  "extends": ["config:recommended"],
+  "rangeStrategy": "pin",
+  "pinDigests": true,
   "minimumReleaseAge": "7 days",
   "internalChecksFilter": "strict",
   "timezone": "Europe/Amsterdam",
