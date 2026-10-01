@@ -1,0 +1,112 @@
+name: Signed release automation
+
+on:
+  workflow_call:
+    inputs:
+      client-id:
+        description: GitHub App client ID from RELEASE_APP_CLIENT_ID
+        required: true
+        type: string
+      target-branch:
+        description: Release branch; defaults to the caller's default branch
+        default: ''
+        type: string
+      config-file:
+        default: release-please-config.json
+        type: string
+      manifest-file:
+        default: .release-please-manifest.json
+        type: string
+      release-type:
+        description: Optional simple strategy for repositories without a manifest
+        default: ''
+        type: string
+      skip-github-release:
+        description: Create or update release PRs without publishing releases
+        default: false
+        type: boolean
+    secrets:
+      private-key:
+        description: GitHub App PEM from RELEASE_APP_PRIVATE_KEY
+        required: true
+    outputs:
+      releases-created:
+        description: Whether this run published any releases
+        value: ${{ jobs.release.outputs.releases-created }}
+      paths-released:
+        description: JSON array of released package paths
+        value: ${{ jobs.release.outputs.paths-released }}
+      prs:
+        description: JSON array of created or updated release PRs
+        value: ${{ jobs.release.outputs.prs }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-release-${{ github.repository }}-${{ inputs.target-branch || github.event.repository.default_branch }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Never expose the App key to a PR-triggered workflow.
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref_name == (inputs.target-branch || github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      releases-created: ${{ steps.release.outputs.releases_created }}
+      paths-released: ${{ steps.release.outputs.paths_released }}
+      prs: ${{ steps.release.outputs.prs }}
+    steps:
+      - name: Create repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ inputs.client-id }}
+          private-key: ${{ secrets.private-key }}
+          # With owner and repositories omitted, access is limited to the caller.
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Release Please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          target-branch: ${{ inputs.target-branch }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
+          release-type: ${{ inputs.release-type }}
+          skip-github-release: ${{ inputs.skip-github-release }}
+
+      - name: Verify release commit signatures
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const prs = JSON.parse(process.env.RELEASE_PRS);
+            for (const pr of prs) {
+              const commits = await github.paginate(github.rest.pulls.listCommits, {
+                ...context.repo,
+                pull_number: pr.number,
+                per_page: 100,
+              });
+              if (commits.length === 0) {
+                throw new Error(`Release PR #${pr.number} has no commits`);
+              }
+              for (const commit of commits) {
+                const verification = commit.commit.verification;
+                if (!verification?.verified) {
+                  throw new Error(
+                    `Release PR #${pr.number}: ${commit.sha} is ${verification?.reason || 'unverified'}`
+                  );
+                }
+              }
+              core.info(`Release PR #${pr.number}: all ${commits.length} commits verified`);
+            }
