@@ -1,0 +1,125 @@
+name: Shared Apple internal TestFlight
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        required: true
+        type: string
+      targets:
+        description: 'JSON array of {scheme, platform}; platform is iOS or macOS'
+        required: true
+        type: string
+      core-package:
+        description: Optional Swift package to test before signing
+        default: ''
+        type: string
+    secrets:
+      ASC_KEY_ID:
+        required: true
+      ASC_ISSUER_ID:
+        required: true
+      ASC_KEY_BASE64:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-internal-testflight-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    if: >-
+      github.repository_owner == 'seventwo-studio' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      vars.APPLE_INTERNAL_TESTFLIGHT_ENABLED == 'true' &&
+      vars.APPLE_RELEASE_RUNNER_READY == 'true'
+    environment: internal-testflight
+    runs-on:
+      group: seventwo-mac
+      labels: [self-hosted, macOS, ARM64, apple-release-isolated]
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPLE_PROJECT: ${{ inputs.project }}
+      APPLE_TARGETS: ${{ inputs.targets }}
+      CORE_PACKAGE: ${{ inputs.core-package }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Validate release configuration and test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, re
+          assert re.fullmatch(r'[A-Z0-9]{10}', os.environ['APPLE_TEAM_ID']), 'Invalid Apple team ID'
+          project = pathlib.Path(os.environ['APPLE_PROJECT'])
+          assert not project.is_absolute() and '..' not in project.parts
+          assert project.suffix == '.xcodeproj' and (project / 'project.pbxproj').is_file()
+          targets = json.loads(os.environ['APPLE_TARGETS'])
+          assert isinstance(targets, list) and 0 < len(targets) <= 2
+          assert len({t['platform'] for t in targets}) == len(targets), 'Duplicate platform'
+          for t in targets:
+              assert t['platform'] in ('iOS', 'macOS')
+              assert re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9 _.-]*', t['scheme'])
+          PY
+          xcodebuild -version
+          test "$(xcodebuild -version | awk '/^Xcode / {split($2,a,"."); print a[1]}')" -ge 27
+          xcodebuild -downloadComponent MetalToolchain
+          if [ -n "$CORE_PACKAGE" ]; then
+            xcrun swift test --package-path "$CORE_PACKAGE" \
+              --scratch-path "$RUNNER_TEMP/core-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          fi
+      - name: Sign and upload internal-only builds
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          work_dir="$(mktemp -d "$RUNNER_TEMP/apple-delivery.XXXXXX")"
+          trap 'rm -rf "$work_dir"' EXIT
+          export APPLE_DELIVERY_TEMP="$work_dir"
+          python3 - <<'PY'
+          import base64, json, os, pathlib, plistlib, re, subprocess
+          env = os.environ
+          assert re.fullmatch(r'[A-Z0-9]{10}', env['ASC_KEY_ID']), 'Invalid key ID'
+          assert re.fullmatch(r'[0-9]+', env['GITHUB_RUN_ID'])
+          assert re.fullmatch(r'[1-9][0-9]*', env['GITHUB_RUN_ATTEMPT'])
+          build = env['GITHUB_RUN_ID'] + '.' + env['GITHUB_RUN_ATTEMPT']
+          work = pathlib.Path(env['APPLE_DELIVERY_TEMP'])
+          key = work / ('AuthKey_' + env['ASC_KEY_ID'] + '.p8')
+          key.write_bytes(base64.b64decode(env['ASC_KEY_BASE64'], validate=True))
+          assert key.stat().st_size > 0, 'Empty key'
+          options = work / 'ExportOptions.plist'
+          options.write_bytes(plistlib.dumps({
+              'destination': 'upload', 'method': 'app-store-connect',
+              'manageAppVersionAndBuildNumber': False, 'signingStyle': 'automatic',
+              'teamID': env['APPLE_TEAM_ID'], 'testFlightInternalTestingOnly': True,
+          }))
+          auth = ['-allowProvisioningUpdates', '-authenticationKeyPath', str(key),
+                  '-authenticationKeyID', env['ASC_KEY_ID'],
+                  '-authenticationKeyIssuerID', env['ASC_ISSUER_ID']]
+          child_env = dict(env)
+          child_env.pop('ASC_KEY_BASE64', None)
+          for target in json.loads(env['APPLE_TARGETS']):
+              platform, scheme = target['platform'], target['scheme']
+              archive = work / (platform + '.xcarchive')
+              subprocess.run(['xcodebuild', '-project', env['APPLE_PROJECT'], '-scheme', scheme,
+                  '-configuration', 'Release', '-destination', 'generic/platform=' + platform,
+                  '-archivePath', str(archive), 'DEVELOPMENT_TEAM=' + env['APPLE_TEAM_ID'],
+                  'CURRENT_PROJECT_VERSION=' + build, *auth, 'archive'], check=True, env=child_env)
+              subprocess.run(['xcodebuild', '-exportArchive', '-archivePath', str(archive),
+                  '-exportPath', str(work / (platform + '-export')),
+                  '-exportOptionsPlist', str(options), *auth], check=True, env=child_env)
+              with open(env['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                  summary.write(f'Uploaded {scheme} ({platform}), build {build}. Apple processing and tester availability still require verification.\n\n')
+          PY
