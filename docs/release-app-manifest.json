@@ -1,0 +1,17 @@
+{
+  "name": "SevenTwo Releases",
+  "url": "https://github.com/seventwo-studio/.github",
+  "description": "Signed release automation for selected SevenTwo and personal repositories.",
+  "public": true,
+  "hook_attributes": {
+    "url": "https://github.com/seventwo-studio/.github",
+    "active": false
+  },
+  "default_permissions": {
+    "contents": "write",
+    "issues": "write",
+    "pull_requests": "write"
+  },
+  "default_events": [],
+  "request_oauth_on_install": false
+}
