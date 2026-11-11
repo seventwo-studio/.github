@@ -15,7 +15,7 @@ jobs:
       group: enterprise-pr-message-${{ github.repository }}-${{ github.workflow }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
-      - name: Check current PR metadata and predicted squash title
-        uses: seventwo-studio/.github/.github/actions/pr-message@592f6360ca526855159423db5cbe4c91380a6b15
+      - name: Check current PR title and commit messages
+        uses: seventwo-studio/.github/.github/actions/pr-message@4bdd72fc6bba9edfd9c5ce765464ab36ecf3a075
         with:
           token: ${{ github.token }}
