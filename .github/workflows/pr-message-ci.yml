@@ -22,7 +22,3 @@ jobs:
       - run: node --test .github/actions/pr-message/policy.test.mjs scripts/rollout-pr-message.test.mjs
       - name: Lint workflow contracts
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=""
-  enterprise-probe:
-    name: Enterprise runner probe
-    if: github.event_name == 'pull_request'
-    uses: seventwo-studio/.github/.github/workflows/pr-message.yml@1a996f46461c95f22b057caf44038ed81c02e00a

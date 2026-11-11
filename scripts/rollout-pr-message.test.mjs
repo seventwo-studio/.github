@@ -60,6 +60,7 @@ test('rollout creates only an isolated caller branch and PR, with no direct defa
   assert.equal(result.status, 'proposed'); const writes = f.calls.filter(call => call.method !== 'GET');
   assert.equal(writes.length, 3); assert.equal(writes[0].body.ref, 'refs/heads/ci/enterprise-pr-message'); assert.equal(writes[1].body.branch, 'ci/enterprise-pr-message');
   assert.equal(Buffer.from(writes[1].body.content, 'base64').toString('utf8'), CALLER); assert.ok(!CALLER.includes('checkout'));
+  assert.ok(CALLER.includes('\n  pull_request:\n'));
   assert.ok(CALLER.includes('edited')); assert.ok(!CALLER.includes('secrets: inherit'));
 });
 test('installed or already proposed callers are idempotent', async () => {
