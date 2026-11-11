@@ -4,3 +4,4 @@ This repository defines some default documents that apply to all of our reposito
 Reusable workflows:
 
 - [Signed release automation](docs/signed-releases.md) for selected SevenTwo and personal repositories.
+- [Enterprise PR message checks](docs/pr-message-policy.md), including GitHub squash-title suffixes and title-edit rechecks.
