@@ -1,10 +1,14 @@
 # Enterprise PR message policy
 
-The shared check validates PR titles against the enterprise conventional-commit and squash-message rules. It includes GitHub's ` (#PR-number)` suffix, so a title that fits by itself cannot silently exceed the 72-character subject budget at merge time. For PR #18, the suffix consumes six characters and leaves 66 characters after the conventional prefix.
+The shared check validates every PR commit message and the current PR title against both enterprise message rules. It includes GitHub's ` (#PR-number)` suffix, so a title that fits by itself cannot silently exceed the 72-character subject budget at merge time. For PR #18, the suffix consumes six characters and leaves 66 characters after the conventional prefix.
 
-The implementation lives in `.github/actions/pr-message`. The reusable workflow is `.github/workflows/pr-message.yml`. Runtime execution uses the enterprise `amsterdam` group and its `homelab-linux-amd64` scale set. It reads current PR metadata with the caller's read-only token and executes a pinned copy of the shared action. It does not check out PR code, install PR dependencies, use repository secrets or run commands taken from a title.
+The implementation lives in `.github/actions/pr-message`. The reusable workflow is `.github/workflows/pr-message.yml`. Runtime execution uses the enterprise `amsterdam` group and its `homelab-linux-amd64` scale set. It reads current PR metadata and paginated commit messages with the caller's read-only token and executes a pinned copy of the shared action. It does not check out PR code, install PR dependencies, use repository secrets or execute titles or commit bodies.
 
 Titles such as `feat(api): add account settings` and `fix!: retire the old endpoint` are supported. The policy allows any lowercase type, matching the existing enterprise regex; it does not introduce a separate type whitelist. Use `revert: ...` for reverts, because a suffix after the closing quote of `Revert "..."` would violate the existing strict regex. Unicode subject length counts code points. The check neither changes titles nor rewrites commits.
+
+Every commit message must match both full-message regexes, including a blank line before any body. A default `Merge branch 'main' into ...` update commit fails the stricter rule even when the PR title is valid. Rebase an owned branch or use a compliant commit message when incorporating the base branch. GitHub applies commit metadata restrictions to every PR commit even when squash merging. See [GitHub's metadata restrictions](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository#adding-metadata-restrictions).
+
+The action reads up to 250 commits in pages of 100 and requires the exact reported count, unique commit identities and the current head. It rereads PR metadata before reporting a result and refuses a changed head, base or commit count. GitHub's [PR commit endpoint](https://docs.github.com/en/rest/pulls/pulls#list-commits-on-a-pull-request) exposes at most 250 commits; larger histories must be rebased or split before this check can pass. Partial history never passes. Commit messages are limited to 64 KiB, PR metadata to 1 MiB and each commit page to 4 MiB, with 15-second API request deadlines. Failure reports identify commits by SHA and do not reproduce commit bodies.
 
 ## Repository caller
 
@@ -14,7 +18,7 @@ The caller runs on `pull_request` with `opened`, `edited`, `synchronize`, `reope
 
 GitHub's required-workflow rulesets ignore activity filters and run only on default PR events. That is why this title-sensitive check uses small callers rather than relying solely on a centrally required workflow. [GitHub's trigger restrictions](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#supported-event-triggers) describe this limitation.
 
-The resulting check is `PR message policy / Validate squash title`. Require it through organization rules after the caller has been merged in every active repository. Keep the existing commit-message rules: manually edited merge messages and commit history are still validated by GitHub, and repository settings can choose a single commit's message instead of the PR title.
+The existing check name `PR message policy / Validate squash title` is retained and now covers commit messages too. Require it through organization rules after the caller has been merged in every active repository. Keep the existing commit-message rules: GitHub still validates manually edited merge messages, and repository settings can choose a single commit's message instead of the PR title.
 
 Runtime action revisions use full SHA pins. The initial action and runner-probe revisions remain reachable through `pr-message-action-v1` and `pr-message-workflow-probe-v1`. Keep these release refs when deleting feature branches after a squash merge. Future pins must point to an already published commit or a reviewed artifact retained by a new release ref; do not move a published release tag.
 
@@ -53,4 +57,4 @@ Run discovery again when a new repository or organization joins the enterprise. 
 node --test .github/actions/pr-message/policy.test.mjs scripts/rollout-pr-message.test.mjs
 ```
 
-Fixtures cover the original Canaveral failure, exact length boundaries, longer PR numbers, Unicode, title edits, stale heads, metadata identity, API errors, output injection, complete enterprise discovery and non-destructive caller proposals. A runner probe must also demonstrate the reusable workflow runs on the intended enterprise scale set before broad enforcement.
+Fixtures cover the original Canaveral failure, invalid update-branch commits, full-message formatting, pagination through 250 commits, incomplete or changing history, API bounds and failures, exact title lengths, Unicode, output injection, complete enterprise discovery and non-destructive caller proposals. A runner probe must also demonstrate the reusable workflow runs on the intended enterprise scale set before broad enforcement.
