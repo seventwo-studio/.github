@@ -22,7 +22,7 @@ Allow only the shared workflow to use the enterprise runner group:
 
 `seventwo-studio/.github/.github/workflows/pr-message.yml@refs/heads/main`
 
-Preserve all existing selected workflows. The group remains restricted to selected workflows. Public repositories need explicit public-repository access, and each enterprise organization must be granted access to the group. These permissions authorize only the fixed metadata workflow; they must not grant arbitrary public PR workflows access to the runner. [GitHub documents workflow-specific runner access](https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/manage-runners/self-hosted-runners/manage-access).
+Preserve all existing selected workflows. The group remains restricted to selected workflows. Public repositories need public-repository access enabled at both the enterprise and organization layers: `inherited_allows_public_repositories: true` alone is not sufficient when the organization's `allows_public_repositories` remains false. Each enterprise organization and target repository must also be granted access to the group. These permissions authorize only the fixed metadata workflow; they must not grant arbitrary public PR workflows access to the runner. [GitHub documents workflow-specific runner access](https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/manage-runners/self-hosted-runners/manage-access).
 
 ## Plan and propose the rollout
 
@@ -41,7 +41,7 @@ node scripts/rollout-pr-message.mjs --enterprise seventwo-studio \
   --apply --repository seventwo-studio/canaveral
 ```
 
-Remove `--repository` to propose callers across the whole enterprise. The tool opens separate reviewable PRs; it never merges them or writes directly to a default branch. Repeated runs reuse existing proposals and recognize installed callers. Existing custom files at the rollout path, conflicting branches, incomplete repository trees and changed repository identity stop that repository's update. Review the reported blocked entries before claiming complete coverage.
+Remove `--repository` to propose callers across the whole enterprise. Before writing, the tool checks that the shared workflow exists on `main`, that its protected ref is approved for the runner group, and that public-repository and repository grants are enabled at every required layer. It opens separate reviewable PRs; it never merges them or writes directly to a default branch. Repeated runs reuse existing proposals and recognize installed callers. Existing custom files at the rollout path, conflicting branches, incomplete repository trees and changed repository identity stop that repository's update. Review the reported blocked entries before claiming complete coverage.
 
 Run discovery again when a new repository or organization joins the enterprise. Merge its caller before requiring the status check there. Repository adoption and runner access are separate from publishing the shared implementation; a new action PR alone does not make enterprise coverage live.
 

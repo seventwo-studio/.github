@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planEnterprise, proposeCaller, parseArguments, CALLER, WORKFLOW_PATH } from './rollout-pr-message.mjs';
+import { planEnterprise, proposeCaller, parseArguments, RUNNER_WORKFLOW, CALLER, WORKFLOW_PATH } from './rollout-pr-message.mjs';
 
 test('enterprise discovery follows organization pagination and includes every active repository', async () => {
   const calls = [];
@@ -39,11 +39,14 @@ test('a missing pilot repository value cannot accidentally apply to the entire e
 });
 
 const item = { repository: 'org/repo', id: 1, base: 'main' };
-function api({ existing, prior, changed = false } = {}) {
+function api({ existing, prior, changed = false, runner = {} } = {}) {
   const calls = [];
   return { calls, request: async (method, path, body) => {
     calls.push({ method, path, body });
-    if (path === 'repos/org/repo') return { id: changed ? 2 : 1, default_branch: 'main', permissions: { push: true } };
+    if (path === 'repos/org/repo') return { id: changed ? 2 : 1, full_name: 'org/repo', visibility: 'public', default_branch: 'main', permissions: { push: true } };
+    if (path.startsWith('orgs/org/actions/runner-groups?')) return { runner_groups: [{ id: 14, name: 'amsterdam', inherited: true }] };
+    if (path === 'orgs/org/actions/runner-groups/14') return { id: 14, visibility: 'selected', restricted_to_workflows: true, selected_workflows: [RUNNER_WORKFLOW], allows_public_repositories: true, inherited_allows_public_repositories: true, ...runner };
+    if (path.includes('/runner-groups/14/repositories?')) return { repositories: [{ id: 1 }] };
     if (path.includes('/git/trees/')) return { tree: existing === undefined ? [] : [{ path: WORKFLOW_PATH, sha: 'file' }], truncated: false };
     if (path.includes('/git/blobs/')) return { content: Buffer.from(existing).toString('base64') };
     if (path.includes('/pulls?')) return prior ? [{ head: { ref: 'ci/enterprise-pr-message' }, base: { ref: 'main' }, state: 'open', html_url: prior }] : [];
@@ -68,4 +71,13 @@ test('installed or already proposed callers are idempotent', async () => {
 test('foreign existing workflows, changed repository identity and incomplete trees are never overwritten', async () => {
   for (const options of [{ existing: 'custom workflow' }, { changed: true }]) { const f = api(options); await assert.rejects(proposeCaller(item, f.request)); assert.equal(f.calls.filter(call => call.method !== 'GET').length, 0); }
   const f = api(); await assert.rejects(proposeCaller(item, async (method, path, body) => path.includes('/git/trees/') ? { tree: [], truncated: true } : f.request(method, path, body))); assert.equal(f.calls.filter(call => call.method !== 'GET').length, 0);
+});
+test('missing public access at either runner layer blocks rollout before branch or PR writes', async () => {
+  for (const runner of [{ allows_public_repositories: false }, { inherited_allows_public_repositories: false }]) {
+    const f = api({ runner }); await assert.rejects(proposeCaller(item, f.request), /both enterprise and organization/); assert.equal(f.calls.filter(call => call.method !== 'GET').length, 0);
+  }
+});
+test('unapproved workflows and missing repository grants cannot produce broken caller proposals', async () => {
+  for (const runner of [{ restricted_to_workflows: false }, { selected_workflows: [] }]) { const f = api({ runner }); await assert.rejects(proposeCaller(item, f.request), /not approved/); assert.equal(f.calls.filter(call => call.method !== 'GET').length, 0); }
+  const f = api(); await assert.rejects(proposeCaller(item, (method, path, body) => path.includes('/runner-groups/14/repositories?') ? { repositories: [] } : f.request(method, path, body)), /not been granted/); assert.equal(f.calls.filter(call => call.method !== 'GET').length, 0);
 });

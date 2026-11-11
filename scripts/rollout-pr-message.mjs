@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 
 export const WORKFLOW_PATH = '.github/workflows/enterprise-pr-message.yml';
 export const ROLLOUT_BRANCH = 'ci/enterprise-pr-message';
+export const RUNNER_WORKFLOW = 'seventwo-studio/.github/.github/workflows/pr-message.yml@refs/heads/main';
 export const CALLER = `# Managed by seventwo-studio/.github; validation stays in the shared workflow.
 name: PR message policy
 on:
@@ -67,6 +68,7 @@ export async function proposeCaller(item, request = ghRequest) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repo) || repo.split('/').some(part => ['.', '..'].includes(part))) throw new Error('Invalid repository identity.');
   const current = await request('GET', `repos/${repo}`);
   if (current.id !== item.id || current.default_branch !== item.base || current.archived || current.disabled || !current.permissions?.push) throw new Error('Repository identity, branch, activity or write access changed.');
+  await verifyRunnerAccess(current, request);
   // A directory inventory avoids treating a permission/network error as an absent file.
   const tree = await request('GET', `repos/${repo}/git/trees/${encodeURIComponent(item.base)}?recursive=1`);
   if (!Array.isArray(tree.tree) || tree.truncated) throw new Error('Complete repository tree is required before adding a caller.');
@@ -86,6 +88,29 @@ export async function proposeCaller(item, request = ghRequest) {
   await request('PUT', `repos/${repo}/contents/${WORKFLOW_PATH}`, { branch: ROLLOUT_BRANCH, message: 'ci: add enterprise PR message check', content: Buffer.from(CALLER).toString('base64') });
   const pr = await request('POST', `repos/${repo}/pulls`, { base: item.base, head: ROLLOUT_BRANCH, title: 'ci: validate PR squash titles with enterprise policy', body: 'Add the small caller for the centrally managed PR squash-title policy. It reruns on title edits, uses the enterprise runner workflow, and never checks out PR code.\n\nThe shared implementation lives in seventwo-studio/.github. Existing repository CI and branch rules remain in place.' });
   return { repository: repo, status: 'proposed', url: pr.html_url };
+}
+
+export async function verifyRunnerAccess(repo, request = ghRequest) {
+  const org = repo.full_name.split('/')[0]; let found;
+  for (let page = 1; ; page++) {
+    const inventory = await request('GET', `orgs/${org}/actions/runner-groups?per_page=100&page=${page}`);
+    if (!Array.isArray(inventory.runner_groups)) throw new Error('Runner group discovery is unavailable.');
+    found = inventory.runner_groups.find(group => group.name === 'amsterdam' && group.inherited);
+    if (found || inventory.runner_groups.length < 100) break;
+  }
+  if (!found) throw new Error('The enterprise runner group is not shared with this organization.');
+  const group = await request('GET', `orgs/${org}/actions/runner-groups/${found.id}`);
+  if (!group.restricted_to_workflows || !group.selected_workflows?.includes(RUNNER_WORKFLOW)) throw new Error('The protected shared workflow is not approved for the enterprise runner group.');
+  if (repo.visibility === 'public' && (!group.allows_public_repositories || !group.inherited_allows_public_repositories)) throw new Error('Public repositories must be enabled at both enterprise and organization runner-group layers.');
+  if (group.visibility === 'all' || group.visibility === 'private' && repo.visibility !== 'public') return;
+  if (group.visibility !== 'selected') throw new Error('Repository visibility is not allowed by the runner group.');
+  for (let page = 1; ; page++) {
+    const inventory = await request('GET', `orgs/${org}/actions/runner-groups/${group.id}/repositories?per_page=100&page=${page}`);
+    if (!Array.isArray(inventory.repositories)) throw new Error('Runner repository access is unavailable.');
+    if (inventory.repositories.some(item => item.id === repo.id)) return;
+    if (inventory.repositories.length < 100) break;
+  }
+  throw new Error('This repository has not been granted access to the enterprise runner group.');
 }
 
 export function parseArguments(args) {
@@ -108,6 +133,8 @@ export async function main(args = process.argv.slice(2)) {
   const { enterprise, apply, repository } = parseArguments(args);
   const plan = await planEnterprise(enterprise);
   if (!apply) { console.log(JSON.stringify(plan, null, 2)); return; }
+  const source = await ghRequest('GET', 'repos/seventwo-studio/.github/contents/.github/workflows/pr-message.yml?ref=main');
+  if (source.type !== 'file' || !source.sha) throw new Error('Merge the shared workflow to main before proposing repository callers.');
   const targets = repository ? plan.repositories.filter(item => item.repository === repository) : plan.repositories;
   if (!targets.length) throw new Error('No active enterprise repositories match the selection.');
   const results = [];
