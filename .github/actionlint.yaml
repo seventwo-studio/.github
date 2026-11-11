@@ -1,3 +1,4 @@
 self-hosted-runner:
   labels:
     - apple-release-isolated
+    - homelab-linux-amd64
