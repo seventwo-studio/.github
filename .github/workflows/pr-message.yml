@@ -12,7 +12,7 @@ jobs:
       labels: homelab-linux-amd64
     timeout-minutes: 5
     concurrency:
-      group: enterprise-pr-message-${{ github.repository }}-${{ github.event.pull_request.number }}
+      group: enterprise-pr-message-${{ github.repository }}-${{ github.workflow }}-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
       - name: Check current PR metadata and predicted squash title

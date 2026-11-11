@@ -9,7 +9,7 @@ export const RUNNER_WORKFLOW = 'seventwo-studio/.github/.github/workflows/pr-mes
 export const CALLER = `# Managed by seventwo-studio/.github; validation stays in the shared workflow.
 name: PR message policy
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
 permissions:
   contents: read
