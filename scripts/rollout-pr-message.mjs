@@ -88,11 +88,24 @@ export async function proposeCaller(item, request = ghRequest) {
   return { repository: repo, status: 'proposed', url: pr.html_url };
 }
 
+export function parseArguments(args) {
+  const values = {}, seen = new Set();
+  for (let i = 0; i < args.length; i++) {
+    const option = args[i];
+    if (!['--enterprise', '--apply', '--repository'].includes(option) || seen.has(option)) throw new Error('Unknown or repeated rollout option.');
+    seen.add(option);
+    if (option === '--apply') { values.apply = true; continue; }
+    const value = args[++i];
+    if (!value || value.startsWith('--')) throw new Error('A rollout option value is missing.');
+    values[option.slice(2)] = value;
+  }
+  if (!/^[A-Za-z0-9-]+$/u.test(values.enterprise ?? '')) throw new Error('An enterprise slug is required.');
+  if (values.repository !== undefined && (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(values.repository) || values.repository.split('/').some(part => ['.', '..'].includes(part)))) throw new Error('A full repository name is required.');
+  return { ...values, apply: values.apply === true };
+}
+
 export async function main(args = process.argv.slice(2)) {
-  const enterpriseAt = args.indexOf('--enterprise'), enterprise = enterpriseAt < 0 ? undefined : args[enterpriseAt + 1];
-  const apply = args.includes('--apply'), repoAt = args.indexOf('--repository'), repository = repoAt < 0 ? undefined : args[repoAt + 1];
-  const allowed = new Set(['--enterprise', enterprise, '--apply', '--repository', repository]);
-  if (!enterprise || args.some(arg => !allowed.has(arg))) throw new Error('Usage: node scripts/rollout-pr-message.mjs --enterprise SLUG [--apply] [--repository OWNER/REPO]');
+  const { enterprise, apply, repository } = parseArguments(args);
   const plan = await planEnterprise(enterprise);
   if (!apply) { console.log(JSON.stringify(plan, null, 2)); return; }
   const targets = repository ? plan.repositories.filter(item => item.repository === repository) : plan.repositories;

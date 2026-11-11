@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planEnterprise, proposeCaller, CALLER, WORKFLOW_PATH } from './rollout-pr-message.mjs';
+import { planEnterprise, proposeCaller, parseArguments, CALLER, WORKFLOW_PATH } from './rollout-pr-message.mjs';
 
 test('enterprise discovery follows organization pagination and includes every active repository', async () => {
   const calls = [];
@@ -23,6 +23,19 @@ test('repository discovery does not silently truncate after 100 repositories', a
 test('unavailable enterprise discovery cannot become a partial rollout', async () => {
   await assert.rejects(planEnterprise('enterprise', async () => ({ data: { enterprise: null } })));
   await assert.rejects(planEnterprise('enterprise', async () => ({ data: { enterprise: { organizations: { nodes: [], pageInfo: { hasNextPage: true } } } } })));
+});
+test('empty repositories are positively identified rather than mistaken for unreadable branches', async () => {
+  const plan = await planEnterprise('enterprise', async (_, path, body) => {
+    if (path === 'graphql' && body.variables.owner) return { data: { repository: { isEmpty: true } } };
+    if (path === 'graphql') return { data: { enterprise: { organizations: { nodes: [{ login: 'org' }], pageInfo: { hasNextPage: false } } } } };
+    return [{ id: 1, name: 'empty', full_name: 'org/empty', size: 0, default_branch: 'main' }];
+  });
+  assert.deepEqual(plan.repositories, []); assert.deepEqual(plan.skipped, [{ repository: 'org/empty', reason: 'empty' }]);
+});
+test('a missing pilot repository value cannot accidentally apply to the entire enterprise', () => {
+  for (const args of [[], ['--enterprise', 'org', '--apply', '--repository'], ['--enterprise', 'org', '--repository', '--apply'], ['--enterprise', 'org', '--apply', '--apply'], ['--enterprise', 'org', '--unknown'], ['--enterprise', 'org', '--repository', '../repo']]) assert.throws(() => parseArguments(args));
+  assert.deepEqual(parseArguments(['--enterprise', 'enterprise', '--apply', '--repository', 'org/repo']), { enterprise: 'enterprise', apply: true, repository: 'org/repo' });
+  assert.equal(parseArguments(['--enterprise', 'enterprise']).apply, false);
 });
 
 const item = { repository: 'org/repo', id: 1, base: 'main' };
