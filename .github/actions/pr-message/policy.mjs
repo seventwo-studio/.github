@@ -5,6 +5,13 @@ export const RULES = [
   /^(?:[a-z]+(?:\([^)\r\n]+\))?!?: [^\r\n]{1,72}|Revert "[^"\r\n]{1,72}")(?:\r?\n\r?\n[\s\S]+)?\r?\n?$/u,
 ];
 
+export function validateCommitMessage(message) {
+  if (typeof message !== 'string' || !message.isWellFormed() || Buffer.byteLength(message, 'utf8') > 65536) {
+    throw new Error('A commit message must be well-formed text within 64 KiB.');
+  }
+  return RULES.every(rule => rule.test(message));
+}
+
 export function validateTitle(title, number) {
   if (typeof title !== 'string' || !title.isWellFormed() || /[\r\n]/u.test(title) || title.length > 4096) {
     throw new Error('The PR title must be one well-formed line.');
@@ -30,5 +37,5 @@ export function annotationData(value) {
 
 export function summary(result) {
   const escape = value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('`', '&#96;');
-  return `### PR squash message: ${result.valid ? 'passed' : 'needs a shorter or conventional title'}\n\n${escape(result.explanation)}\n\nPredicted default squash title:\n\n<pre>${escape(result.squashTitle)}</pre>\n\nThis validates the PR title with the dynamic PR-number suffix. GitHub still validates any manually edited merge message.\n`;
+  return `### PR message policy: ${result.valid ? 'passed' : 'failed'}\n\n${escape(result.explanation)}\n\nPredicted default squash title:\n\n<pre>${escape(result.squashTitle)}</pre>\n\nThe shared action checks the current PR title, its dynamic PR-number suffix and PR commit messages. GitHub still validates any manually edited merge message.\n`;
 }
