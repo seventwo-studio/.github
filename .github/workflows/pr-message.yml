@@ -1,0 +1,21 @@
+name: PR message policy
+on:
+  workflow_call:
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  validate:
+    name: Validate squash title
+    runs-on:
+      group: amsterdam
+      labels: homelab-linux-amd64
+    timeout-minutes: 5
+    concurrency:
+      group: enterprise-pr-message-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Check current PR metadata and predicted squash title
+        uses: seventwo-studio/.github/.github/actions/pr-message@592f6360ca526855159423db5cbe4c91380a6b15
+        with:
+          token: ${{ github.token }}

@@ -1,0 +1,12 @@
+name: PR squash message policy
+description: Validate the current PR title with GitHub's squash suffix against enterprise commit rules.
+inputs:
+  token:
+    description: Repository token with pull-requests read access.
+    required: true
+outputs:
+  valid:
+    description: Whether the predicted squash title satisfies the policy.
+runs:
+  using: node24
+  main: action.mjs
